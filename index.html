@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Liste des rues de France</title>
+<style>
+body{font-family:Arial,sans-serif;max-width:760px;margin:35px auto;padding:0 16px;color:#202938;background:#f5f7fb}
+main{background:white;padding:24px;border-radius:14px;box-shadow:0 3px 18px #0001}
+h1{font-size:26px}
+input,button{box-sizing:border-box;font-size:16px;padding:12px;border-radius:8px}
+input{width:100%;border:1px solid #bbb;margin:10px 0}
+button{border:0;background:#175cd3;color:white;cursor:pointer;margin:5px 5px 5px 0}
+button:disabled{opacity:.5;cursor:default}
+#communes button{display:block;width:100%;text-align:left;background:#eef4ff;color:#183b70}
+#resultat{white-space:pre-wrap;line-height:1.7;overflow-wrap:anywhere}
+#etat{color:#555}
+</style>
+</head>
+<body>
+<main>
+<h1>Liste des rues de France</h1>
+<p>Recherche une commune par nom, code postal ou code INSEE.</p>
+<input id="recherche" placeholder="Ex. : Strasbourg, 67000 ou 67482">
+<div id="communes"></div>
+<p id="etat">Saisis au moins 2 caractères pour rechercher une commune.</p>
+<div id="actions" hidden>
+<button id="copier">Copier les noms des rues</button>
+<button id="telecharger">Télécharger en .txt</button>
+</div>
+<div id="resultat"></div>
+</main>
+<script>
+const recherche = document.getElementById('recherche');
+const communes = document.getElementById('communes');
+const etat = document.getElementById('etat');
+const resultat = document.getElementById('resultat');
+const actions = document.getElementById('actions');
+let selection = null;
+let rues = [];
+
+function afficherCommunes(liste) {
+  communes.replaceChildren();
+  liste.forEach(c => {
+    const b = document.createElement('button');
+    b.textContent = ${c.nom} (${(c.codesPostaux || []).join(', ')}) — ${c.code};
+    b.onclick = () => choisirCommune(c);
+    communes.appendChild(b);
+  });
+}
+
+async function chercherCommunes() {
+  const q = recherche.value.trim();
+  communes.replaceChildren();
+  selection = null;
+  rues = [];
+  resultat.textContent = '';
+  actions.hidden = true;
+  if (q.length < 2) {
+    etat.textContent = 'Saisis au moins 2 caractères.';
+    return;
+  }
+  etat.textContent = 'Recherche des communes…';
+  try {
+    let url;
+    if (/^\d{5}$/.test(q)) {
+      url = /^\d{2}[0-9AB]\d{2}$/.test(q)
+        ? https://geo.api.gouv.fr/communes?code=${encodeURIComponent(q)}&fields=nom,code,codesPostaux&format=json
+        : https://geo.api.gouv.fr/communes?codePostal=${encodeURIComponent(q)}&fields=nom,code,codesPostaux&format=json;
+    } else {
+      url = https://geo.api.gouv.fr/communes?nom=${encodeURIComponent(q)}&fields=nom,code,codesPostaux&format=json&limit=20;
+    }
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('Service indisponible');
+    const data = await r.json();
+    afficherCommunes(data);
+    etat.textContent = data.length
+      ? 'Clique sur la bonne commune dans la liste.'
+      : 'Aucune commune trouvée.';
+  } catch {
+    etat.textContent = 'Impossible de rechercher les communes. Vérifie ta connexion et réessaie.';
+  }
+}
+
+let delai;
+recherche.addEventListener('input', () => {
+  clearTimeout(delai);
+  delai = setTimeout(chercherCommunes, 350);
+});
+
+async function choisirCommune(c) {
+  selection = c;
+  communes.replaceChildren();
+  etat.textContent = Commune sélectionnée : ${c.nom} (${c.code}).;
+  resultat.textContent = '';
+  actions.hidden = true;
+  // Le service de données des rues sera raccordé à cette étape.
+  etat.textContent += ' La connexion à la base des rues reste à configurer.';
+}
+
+document.getElementById('copier').onclick = async () => {
+  await navigator.clipboard.writeText(rues.join('\n'));
+  etat.textContent = 'Liste copiée.';
+};
+document.getElementById('telecharger').onclick = () => {
+  const blob = new Blob([rues.join('\n')], {type:'text/plain;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = rues-${selection?.code || 'commune'}.txt;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+</script>
+</body>
+</html>
